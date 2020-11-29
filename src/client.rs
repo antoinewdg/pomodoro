@@ -1,9 +1,9 @@
 use std::io;
 use std::os::unix::net::UnixStream;
 
-use crate::common::{Action, SOCKET_ADDRESS};
-
 use thiserror::Error;
+
+use crate::common::{Action, SOCKET_ADDRESS};
 
 #[derive(Error, Debug)]
 pub enum ClientError {
@@ -32,8 +32,9 @@ pub fn main(arguments: &[String]) -> ClientResult<()> {
     let action = match arguments.get(0).map(String::as_str) {
         Some("work") => Ok(Action::Work),
         Some("break") => Ok(Action::Break),
+        Some("stop") => Ok(Action::Stop),
+        None => Ok(Action::GetState),
         Some(name) => Err(name.to_owned()),
-        _ => todo!(),
     }
     .map_err(ClientError::UnknownAction)?;
 

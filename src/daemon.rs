@@ -1,8 +1,6 @@
 use std::fmt;
-use std::fs::File;
 use std::io;
 use std::os::unix::net::UnixListener;
-use std::path::Path;
 
 use chrono::{DateTime, Duration, Local};
 use rodio::Source;
@@ -18,8 +16,6 @@ pub enum DaemonError {
     SocketConnect(io::Error),
     #[error("Error while serializing/deserializing data: {0}")]
     Serde(#[from] bincode::Error),
-    #[error("Error while reading audio file: {0}")]
-    AudioFile(io::Error),
     #[error("Audio-related error: {0}")]
     Audio(Box<dyn std::error::Error>),
     #[error("Invalid action \"{0}\"")]
@@ -38,12 +34,14 @@ enum State {
 pub fn main() -> DaemonResult<()> {
     let mut listener = Listener::new()?;
     let mut state = State::Empty;
-    let session_duration = Duration::seconds(2);
+    let session_duration = Duration::minutes(25);
     let audio_source = _load_source()?;
 
     fn invalid<S: Into<String>>(msg: S) -> DaemonResult<String> {
         Err(DaemonError::InvalidAction(msg.into()))
     }
+
+    println!("Start listening");
 
     listener.listen(|action: Action| match action {
         Action::Work => match state {
@@ -51,7 +49,10 @@ pub fn main() -> DaemonResult<()> {
                 let target_time = Local::now() + session_duration;
                 state = State::Working(target_time);
                 std::thread::spawn(move || ticker(target_time));
-                Ok(format!("Starting a {} session!", session_duration))
+                Ok(format!(
+                    "Starting a {} minutes session!",
+                    session_duration.num_minutes()
+                ))
             }
             State::Working(_) => invalid("Already working !"),
             State::WorkDone(_) => invalid("No way, you need a break"),
@@ -77,20 +78,24 @@ pub fn main() -> DaemonResult<()> {
             State::Empty => invalid("Already on break"),
             State::Working(_) => invalid("You're working you lazy ****"),
         },
+        Action::Stop => {
+            state = State::Empty;
+            Ok("Stopped".to_owned())
+        }
+        Action::GetState => match state {
+            State::WorkDone(_) => Ok("Work session is done, got take a break".to_owned()),
+            State::Empty => Ok("Not doing anything".to_owned()),
+            State::Working(d) => Ok(format!("Working until {}", d.format("%H:%M"))),
+        },
     })?;
+
+    println!("Daemon done");
     Ok(())
 }
 
 fn _load_source() -> DaemonResult<impl rodio::Source<Item = f32> + Clone + Send + 'static> {
-    let path = Path::new(file!())
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("sound.mp3");
-    dbg!(&path);
-    let file = File::open(path).map_err(DaemonError::AudioFile)?;
-    Ok(rodio::Decoder::new(std::io::BufReader::new(file))
+    let file_data = io::Cursor::new(include_bytes!("../sound.mp3"));
+    Ok(rodio::Decoder::new(file_data)
         .map_err(|e| DaemonError::Audio(e.into()))?
         .convert_samples()
         .buffered())
@@ -151,9 +156,7 @@ fn ticker(target_time: DateTime<Local>) -> () {
             let result = send_to_daemon(&Action::WorkDone).unwrap();
             match result {
                 Ok(_) => (),
-                Err(message) => {
-                    eprintln!("{}", message);
-                }
+                Err(message) => eprintln!("Error in ticker thread: {}", message),
             };
             return;
         }
