@@ -1,12 +1,11 @@
 [Unit]
 Description=Pomodoro daemon
-After=multi-user.target
+After=default.target
 
 [Service]
 Type=simple
-User=toto
 Restart=always
-ExecStart=/usr/local/bin/pomodoro daemon
+ExecStart=/usr/bin/env pomodoro daemon
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

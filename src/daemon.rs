@@ -49,10 +49,12 @@ pub fn main() -> DaemonResult<()> {
                 let target_time = Local::now() + session_duration;
                 state = State::Working(target_time);
                 std::thread::spawn(move || ticker(target_time));
-                Ok(format!(
+                let msg = format!(
                     "Starting a {} minutes session!",
                     session_duration.num_minutes()
-                ))
+                );
+                println!("{}", &msg);
+                Ok(msg)
             }
             State::Working(_) => invalid("Already working !"),
             State::WorkDone(_) => invalid("No way, you need a break"),
